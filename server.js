@@ -26,7 +26,7 @@ app.use('/api/tickets', ticketRoutes);
 
 
 // Server
-const PORT = process.env.PORT || 5003;
+const PORT = process.env.PORT || 5002;
 app.listen(PORT, () => {
     console.log(`Ticket Management Service running on port ${PORT}`);
 });
