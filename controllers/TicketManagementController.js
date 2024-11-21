@@ -2,15 +2,43 @@ const Ticket = require('../models/Ticket');
 const axios = require('axios');
 const rabbitmqProducer = require('../services/rabbitmqProducer');
 
+const saveNotification = async (req, userId, email, message, ticketId = null) => {
+  try {
+    const notification = {
+      userId,
+      email,
+      message,
+      status: 'pending', // Default status when notification is saved
+      createdAt: new Date(),
+      ticketId, // Optional: Link notification to a ticket if provided
+    };
+
+    // POST request to save notification via API
+    await axios.post('http://localhost:5000/api/notifications', notification, {
+      headers: {
+        Authorization: `${req.headers.authorization}` // Assuming token is passed in the request header
+      }
+    });
+    console.log('Notification saved successfully.');
+  } catch (error) {
+    console.error('Failed to save notification:', error.message);
+  }
+}
+
 // Create a new ticket
 const createTicket = async (req, res) => {
   try {
     const { title, description, priority, status, assignedTo } = req.body;
-
+    let user=undefined;
     // Check if the assigned user exists
     if(assignedTo){
-    const userResponse = await axios.get(`http://localhost:5000/api/user/${assignedTo}`);
-    const user = userResponse.data;
+      // Fetch the user from your user service with Authorization token in header
+      const userResponse = await axios.get(`http://localhost:5000/api/auth/user/${assignedTo}`, {
+        headers: {
+          Authorization: `${req.headers.authorization}` // Ensure the token is included in the Authorization header
+        }
+      });
+      user = userResponse.data;
 
       if (!user) {
         return res.status(400).json({ message: 'Assigned user does not exist.' });
@@ -19,18 +47,19 @@ const createTicket = async (req, res) => {
 
     const ticket = new Ticket({ title, description, priority, status, assignedTo });
     const savedTicket = await ticket.save();
-
     // Payload for RabbitMQ
-    if(user){
+    if(user!=undefined){
       const payload = {
         email: user.email,
         message: `Your ticket #${savedTicket._id} has been created.`,
         ticket: { ...savedTicket._doc, user },
       };
+      // Send payload to RabbitMQ
+      await rabbitmqProducer.sendMessage('ticket_notifications', payload);
+      await saveNotification(req, user._id, user.email, `Your ticket #${savedTicket._id} has been created.`, savedTicket._id);
     }
 
-    // Send payload to RabbitMQ
-    await rabbitmqProducer.sendMessage('ticket_notifications', payload);
+    
 
     res.status(201).json(savedTicket);
   } catch (error) {
@@ -73,15 +102,19 @@ const updateTicket = async (req, res) => {
     const { title, description, priority, status, assignedTo } = req.body;
 
     const ticket = await Ticket.findById(id);
+    let user=undefined;
 
     if (!ticket) {
       return res.status(404).json({ message: 'Ticket not found.' });
     }
-
     if(assignedTo){
     // Check if the assigned user exists
-    const userResponse = await axios.get(`http://localhost:5000/api/user/${assignedTo}`);
-    const user = userResponse.data;
+    const userResponse = await axios.get(`http://localhost:5000/api/auth/user/${assignedTo}`, {
+      headers: {
+        Authorization: `${req.headers.authorization}` // Ensure the token is included in the Authorization header
+      }
+    });
+    user = userResponse.data;
 
       if (!user) {
         return res.status(400).json({ message: 'Assigned user does not exist.' });
@@ -97,16 +130,18 @@ const updateTicket = async (req, res) => {
     const updatedTicket = await ticket.save();
 
     // Payload for RabbitMQ
-    if(user){
+    if(user!=undefined){
       const payload = {
         email: user.email,
         message: `Your ticket #${updatedTicket._id} has been updated.`,
         ticket: { ...updatedTicket._doc, user },
       };
+      // Send payload to RabbitMQ
+      await rabbitmqProducer.sendMessage('ticket_notifications', payload);
+      await saveNotification(req, user._id, user.email, `Your ticket #${updatedTicket._id} has been updated.`, updatedTicket._id);
     }
 
-    // Send payload to RabbitMQ
-    await rabbitmqProducer.sendMessage('ticket_notifications', payload);
+    
 
     res.status(200).json(updatedTicket);
   } catch (error) {
