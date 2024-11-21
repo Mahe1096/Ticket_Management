@@ -1,16 +1,44 @@
 const Ticket = require('../models/Ticket');
+const axios = require('axios');
+const rabbitmqProducer = require('../services/rabbitmqProducer');
 
 // Create a new ticket
 const createTicket = async (req, res) => {
   try {
     const { title, description, priority, status, assignedTo } = req.body;
+
+    // Check if the assigned user exists
+    if(assignedTo){
+    const userResponse = await axios.get(`http://localhost:5000/api/user/${assignedTo}`);
+    const user = userResponse.data;
+
+      if (!user) {
+        return res.status(400).json({ message: 'Assigned user does not exist.' });
+      }
+    }
+
     const ticket = new Ticket({ title, description, priority, status, assignedTo });
     const savedTicket = await ticket.save();
+
+    // Payload for RabbitMQ
+    if(user){
+      const payload = {
+        email: user.email,
+        message: `Your ticket #${savedTicket._id} has been created.`,
+        ticket: { ...savedTicket._doc, user },
+      };
+    }
+
+    // Send payload to RabbitMQ
+    await rabbitmqProducer.sendMessage('ticket_notifications', payload);
+
     res.status(201).json(savedTicket);
   } catch (error) {
+    console.error('Error creating ticket:', error);
     res.status(500).json({ message: error.message });
   }
 };
+
 
 // Get all tickets
 const getTickets = async (req, res) => {
@@ -47,9 +75,19 @@ const updateTicket = async (req, res) => {
     const ticket = await Ticket.findById(id);
 
     if (!ticket) {
-      return res.status(404).json({ message: "Ticket not found" });
+      return res.status(404).json({ message: 'Ticket not found.' });
     }
 
+    if(assignedTo){
+    // Check if the assigned user exists
+    const userResponse = await axios.get(`http://localhost:5000/api/user/${assignedTo}`);
+    const user = userResponse.data;
+
+      if (!user) {
+        return res.status(400).json({ message: 'Assigned user does not exist.' });
+      }
+   }
+    // Update ticket fields
     ticket.title = title || ticket.title;
     ticket.description = description || ticket.description;
     ticket.priority = priority || ticket.priority;
@@ -57,11 +95,26 @@ const updateTicket = async (req, res) => {
     ticket.assignedTo = assignedTo || ticket.assignedTo;
 
     const updatedTicket = await ticket.save();
+
+    // Payload for RabbitMQ
+    if(user){
+      const payload = {
+        email: user.email,
+        message: `Your ticket #${updatedTicket._id} has been updated.`,
+        ticket: { ...updatedTicket._doc, user },
+      };
+    }
+
+    // Send payload to RabbitMQ
+    await rabbitmqProducer.sendMessage('ticket_notifications', payload);
+
     res.status(200).json(updatedTicket);
   } catch (error) {
+    console.error('Error updating ticket:', error);
     res.status(500).json({ message: error.message });
   }
 };
+
 
 // Delete a ticket
 const deleteTicket = async (req, res) => {
