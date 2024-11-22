@@ -14,7 +14,7 @@ const saveNotification = async (req, userId, email, message, ticketId = null) =>
     };
 
     // POST request to save notification via API
-    await axios.post('http://localhost:5000/api/notifications', notification, {
+    await axios.post('http://host.docker.internal:5000/api/notifications', notification, {
       headers: {
         Authorization: `${req.headers.authorization}` // Assuming token is passed in the request header
       }
@@ -33,7 +33,7 @@ const createTicket = async (req, res) => {
     // Check if the assigned user exists
     if(assignedTo){
       // Fetch the user from your user service with Authorization token in header
-      const userResponse = await axios.get(`http://localhost:5000/api/auth/user/${assignedTo}`, {
+      const userResponse = await axios.get(`http://host.docker.internal:5000/api/auth/user/${assignedTo}`, {
         headers: {
           Authorization: `${req.headers.authorization}` // Ensure the token is included in the Authorization header
         }
@@ -109,7 +109,7 @@ const updateTicket = async (req, res) => {
     }
     if(assignedTo){
     // Check if the assigned user exists
-    const userResponse = await axios.get(`http://localhost:5000/api/auth/user/${assignedTo}`, {
+    const userResponse = await axios.get(`http://host.docker.internal:5000/api/auth/user/${assignedTo}`, {
       headers: {
         Authorization: `${req.headers.authorization}` // Ensure the token is included in the Authorization header
       }
